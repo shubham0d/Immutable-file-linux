@@ -266,12 +266,28 @@ static asmlinkage long fh_sys_write(struct pt_regs *regs)
 	long ret;
 	struct task_struct *task;
 	task = current;
-	if (task=>pid == target_pid)
+	int signum = SIGKILL;
+	if (task->pid == target_pid)
 	{
-		pr_info("write done by our process.\n", task->pid);
+		pr_info("write done by our process.\n");
+		pr_info("fd inside write is %d.\n", target_fd);
+		pr_info("fd recieved is %ld.\n", regs->di);
 	if (regs->di == target_fd)
 	{
 		pr_info("write done by process %d to target file.\n", task->pid);
+		struct kernel_siginfo info;
+		memset(&info, 0, sizeof(struct kernel_siginfo));
+		info.si_signo = signum;
+		int ret = send_sig_info(signum, &info, task);
+				if (ret < 0)
+				{
+				  printk(KERN_INFO "error sending signal\n");
+				}
+				else 
+				{
+					printk(KERN_INFO "Target has been killed\n");
+					return 0;
+				}
 	}
 	}
 
@@ -292,7 +308,7 @@ static asmlinkage long fh_sys_write(unsigned int fd, const char __user *buf,
 	//pr_info("write 2 done by process with id: %d\n", task->pid);
 	if (fd == target_fd)
 	{
-		pr_info("write2 done by process %d to target file.\n", task->pid);
+		pr_info("write2 done by process %ld to target file.\n", task->pid);
 	}
 	
 	ret = real_sys_write(fd, buf, count);
@@ -312,7 +328,7 @@ static asmlinkage long fh_sys_openat(struct pt_regs *regs)
 	char *kernel_filename;
 	struct task_struct *task;
 	task = current;
-	int signum = SIGKILL;
+	
 	
 
 	kernel_filename = duplicate_filename((void*) regs->si);
@@ -322,22 +338,11 @@ static asmlinkage long fh_sys_openat(struct pt_regs *regs)
 		pr_info("opened file : %s\n", kernel_filename);
 		kfree(kernel_filename);
 		ret = real_sys_openat(regs);
-		pr_info("fd returned is %d\n", ret);
+		pr_info("fd returned is %ld\n", ret);
 		target_fd = ret;
+		target_pid = task->pid;
 		return ret;
-		struct kernel_siginfo info;
-		memset(&info, 0, sizeof(struct kernel_siginfo));
-		info.si_signo = signum;
-		int ret = send_sig_info(signum, &info, task);
-				if (ret < 0)
-				{
-				  printk(KERN_INFO "error sending signal\n");
-				}
-				else 
-				{
-					printk(KERN_INFO "Target has been killed\n");
-					return 0;
-				}
+		
 	}
 
 	kfree(kernel_filename);
