@@ -22,6 +22,8 @@ MODULE_DESCRIPTION("Protect write to a file and kill the responsible process");
 MODULE_AUTHOR("Shubham <shubham0d@protonmail.com>");
 MODULE_LICENSE("GPL");
 
+unsigned int target_fd = 0;
+unsigned int target_pid = 0;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,7,0)
 static unsigned long lookup_name(const char *name)
 {
@@ -264,11 +266,16 @@ static asmlinkage long fh_sys_write(struct pt_regs *regs)
 	long ret;
 	struct task_struct *task;
 	task = current;
-	pr_info("write 1 done by process with id: %d\n", task->pid);
-	pr_info("write before:\n");
+	if (task=>pid == target_pid)
+	{
+		pr_info("write done by our process.\n", task->pid);
+	if (regs->di == target_fd)
+	{
+		pr_info("write done by process %d to target file.\n", task->pid);
+	}
+	}
 
 	ret = real_sys_write(regs);
-	pr_info("write after:\n ");
 
 	return ret;
 }
@@ -283,11 +290,13 @@ static asmlinkage long fh_sys_write(unsigned int fd, const char __user *buf,
 	//struct task_struct *task;
 	//task = current;
 	//pr_info("write 2 done by process with id: %d\n", task->pid);
-	pr_info("write before2: \n");
-
+	if (fd == target_fd)
+	{
+		pr_info("write2 done by process %d to target file.\n", task->pid);
+	}
+	
 	ret = real_sys_write(fd, buf, count);
 
-	pr_info("write after:\n");
 
 	return ret;
 }
@@ -310,7 +319,12 @@ static asmlinkage long fh_sys_openat(struct pt_regs *regs)
 	if (strncmp(kernel_filename, "/tmp/test.txt", 13) == 0)
 	{
 		pr_info("our file is opened by process with id: %d\n", task->pid);
-		pr_info("opened file 1: %s\n", kernel_filename);
+		pr_info("opened file : %s\n", kernel_filename);
+		kfree(kernel_filename);
+		ret = real_sys_openat(regs);
+		pr_info("fd returned is %d\n", ret);
+		target_fd = ret;
+		return ret;
 		struct kernel_siginfo info;
 		memset(&info, 0, sizeof(struct kernel_siginfo));
 		info.si_signo = signum;
@@ -377,7 +391,7 @@ static asmlinkage long fh_sys_openat(int dfd, const char __user *filename,
 	}
 
 static struct ftrace_hook demo_hooks[] = {
-	//HOOK("sys_write", fh_sys_write, &real_sys_write),
+	HOOK("sys_write", fh_sys_write, &real_sys_write),
 	HOOK("sys_openat", fh_sys_openat, &real_sys_openat),
 };
 
