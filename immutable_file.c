@@ -20,7 +20,7 @@
 
 MODULE_DESCRIPTION("Protect write to a file and kill the responsible process");
 MODULE_AUTHOR("Shubham <shubham0d@protonmail.com>");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL 3");
 
 unsigned int target_fd = 0;
 unsigned int target_pid = 0;
@@ -269,26 +269,23 @@ static asmlinkage long fh_sys_write(struct pt_regs *regs)
 	int signum = SIGKILL;
 	if (task->pid == target_pid)
 	{
-		pr_info("write done by our process.\n");
-		pr_info("fd inside write is %d.\n", target_fd);
-		pr_info("fd recieved is %ld.\n", regs->di);
-	if (regs->di == target_fd)
-	{
-		pr_info("write done by process %d to target file.\n", task->pid);
-		struct kernel_siginfo info;
-		memset(&info, 0, sizeof(struct kernel_siginfo));
-		info.si_signo = signum;
-		int ret = send_sig_info(signum, &info, task);
-				if (ret < 0)
-				{
-				  printk(KERN_INFO "error sending signal\n");
-				}
-				else 
-				{
-					printk(KERN_INFO "Target has been killed\n");
-					return 0;
-				}
-	}
+		if (regs->di == target_fd)
+		{
+			pr_info("write done by process %d to target file.\n", task->pid);
+			struct kernel_siginfo info;
+			memset(&info, 0, sizeof(struct kernel_siginfo));
+			info.si_signo = signum;
+			int ret = send_sig_info(signum, &info, task);
+					if (ret < 0)
+					{
+					  printk(KERN_INFO "error sending signal\n");
+					}
+					else 
+					{
+						printk(KERN_INFO "Target has been killed\n");
+						return 0;
+					}
+		}
 	}
 
 	ret = real_sys_write(regs);
@@ -302,13 +299,29 @@ static asmlinkage long (*real_sys_write)(unsigned int fd, const char __user *buf
 static asmlinkage long fh_sys_write(unsigned int fd, const char __user *buf,
 		 size_t count)
 {
-	//long ret;
-	//struct task_struct *task;
-	//task = current;
-	//pr_info("write 2 done by process with id: %d\n", task->pid);
-	if (fd == target_fd)
+	long ret;
+	struct task_struct *task;
+	task = current;
+	int signum = SIGKILL;
+	if (task->pid == target_pid)
 	{
-		pr_info("write2 done by process %ld to target file.\n", task->pid);
+		if (fd == target_fd)
+		{
+			pr_info("write done by process %d to target file.\n", task->pid);
+			struct kernel_siginfo info;
+			memset(&info, 0, sizeof(struct kernel_siginfo));
+			info.si_signo = signum;
+			int ret = send_sig_info(signum, &info, task);
+					if (ret < 0)
+					{
+					  printk(KERN_INFO "error sending signal\n");
+					}
+					else 
+					{
+						printk(KERN_INFO "Target has been killed\n");
+						return 0;
+					}
+		}
 	}
 	
 	ret = real_sys_write(fd, buf, count);
@@ -328,8 +341,6 @@ static asmlinkage long fh_sys_openat(struct pt_regs *regs)
 	char *kernel_filename;
 	struct task_struct *task;
 	task = current;
-	
-	
 
 	kernel_filename = duplicate_filename((void*) regs->si);
 	if (strncmp(kernel_filename, "/tmp/test.txt", 13) == 0)
@@ -359,19 +370,26 @@ static asmlinkage long fh_sys_openat(int dfd, const char __user *filename,
 {
 	long ret;
 	char *kernel_filename;
-	//struct task_struct *task;
-	//task = current;
-	//pr_info("write 2 done by process with id: %d\n", task->pid);
-	
-	kernel_filename = duplicate_filename(filename);
+	struct task_struct *task;
+	task = current;
 
-	pr_info("opened file 1: %s\n", kernel_filename);
+	kernel_filename = duplicate_filename(filename);
+	if (strncmp(kernel_filename, "/tmp/test.txt", 13) == 0)
+	{
+		pr_info("our file is opened by process with id: %d\n", task->pid);
+		pr_info("opened file : %s\n", kernel_filename);
+		kfree(kernel_filename);
+		ret = real_sys_openat(dfd, filename, flags, mode);
+		pr_info("fd returned is %ld\n", ret);
+		target_fd = ret;
+		target_pid = task->pid;
+		return ret;
+		
+	}
 
 	kfree(kernel_filename);
 
 	ret = real_sys_openat(filename, flags, mode);
-
-	pr_info("open after:\n");
 
 	return ret;
 }
